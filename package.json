@@ -1,0 +1,63 @@
+{
+  "name": "buzz-frontend",
+  "description": "Hackathon app ",
+  "repository": "https://github.com/razorpay/buzz-frontend",
+  "version": "1.0.0",
+  "author": "Amitabh",
+  "license": "UNLICENSED",
+  "scripts": {
+    "start": "STAGE=development universe dev",
+    "beta:build": "STAGE=beta universe build",
+    "beta:serve": "STAGE=beta universe serve",
+    "production:build": "STAGE=production universe build",
+    "production:serve": "STAGE=production universe serve",
+    "devstack:build": "STAGE=devstack universe build",
+    "devstack:serve": "STAGE=devstack universe serve",
+    "devstack:deploy": "universe infra-e2e devstack-deploy",
+    "devstack:revert": "universe infra-e2e devstack-revert",
+    "tsc": "universe tsc --",
+    "test": "STAGE=test universe test --",
+    "test:e2e": "universe web-e2e test",
+    "test:e2e-infra": "universe infra-e2e e2e-run",
+    "test:clear-cache": "STAGE=test universe test -- --clearCache",
+    "lint": "run-p lint:*",
+    "lint:eslint": "universe eslint . -- --cache",
+    "lint:secretlint": "universe secretlint \"**/*\"",
+    "prettier": "universe prettier -- --write --cache .",
+    "postinstall": "del-cli node_modules/.cache/webpack",
+    "prepare": "husky install"
+  },
+  "dependencies": {
+    "@fontsource/lato": "4.5.9",
+    "@razorpay/blade": "5.4.0",
+    "prop-types": "15.7.2",
+    "react-dom": "18.2.0",
+    "react-helmet-async": "1.3.0",
+    "react-router-dom": "6.3.0",
+    "react": "18.2.0",
+    "styled-components": "5.3.5",
+    "@razorpay/universe-cli": "17.2.0"
+  },
+  "devDependencies": {
+    "@sentry/webpack-plugin": "1.18.9",
+    "@types/react-dom": "18.0.8",
+    "@types/react-helmet": "6.1.5",
+    "@types/react": "18.0.25",
+    "@types/styled-components": "5.1.26"
+  },
+  "resolutions": {
+    "@types/react": "17.0.1",
+    "@types/react-dom": "17.0.1",
+    "@typescript-eslint/eslint-plugin": "5.43.0",
+    "@typescript-eslint/parser": "5.43.0",
+    "jest-environment-jsdom": "29.2.0"
+  },
+  "engines": {
+    "node": ">=18.12.1",
+    "yarn": ">=1.22.0"
+  },
+  "universe": {
+    "isInsideMonorepo": false,
+    "appType": "react-typescript-app"
+  }
+}

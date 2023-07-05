@@ -1,0 +1,43 @@
+user www-data;
+worker_processes auto;
+pid /run/nginx.pid;
+include /etc/nginx/modules-enabled/*.conf;
+
+events {
+  worker_connections  768;
+}
+
+http {
+  default_type       text/html;
+  #access_log         /;
+  sendfile           on;
+  keepalive_timeout  65;
+
+  proxy_cache_path   /tmp/ levels=1:2 keys_zone=s3_cache:10m max_size=500m
+                     inactive=60m use_temp_path=off;
+
+  server {
+   listen 80;
+   server_name  statics.yourside.com;
+   access_log  /var/log/nginx/statics.access.log  combined;
+   error_log   /var/log/nginx/statics.error.log ;
+   set $bucket "rzp-1018-nonprod-actions-cache.s3.ap-south-1.amazonaws.com";
+   sendfile on;
+
+# serve the index.html directly from the root path of the URL
+ location = / {
+     include                /etc/nginx/s3_proxy.conf;
+     proxy_set_header       X-Real-IP $remote_addr;
+     proxy_pass             https://$bucket/${APP_NAME}/devstack/${VERSION}/index.html;
+ }
+
+# serve all the other requests from the s3 bucket
+ location / {
+     include                /etc/nginx/s3_proxy.conf;
+	   proxy_set_header       X-Real-IP $remote_addr;
+	   proxy_pass             https://$bucket/${APP_NAME}/devstack/${VERSION}${uri}; # without trailing slash
+     error_page 403 =200 / ;
+   }
+ }
+
+}

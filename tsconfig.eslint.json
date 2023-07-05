@@ -1,0 +1,6 @@
+// Use 'tsconfig.eslint.json' for files which shouldn't be a part of your existing tsconfig
+// for example, it is a script/tool/config local to the repo
+{
+  "extends": "@razorpay/universe-cli/tsconfig.json",
+  "include": ["e2e", "playwright.config.ts"]
+}

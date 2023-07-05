@@ -1,0 +1,51 @@
+name: Post Deployment - buzz-frontend
+on:
+  - deployment
+env:
+  APP_NAME: buzz-frontend
+  HOME: /actions-runner/_work
+  GITHUB_ACCESS_TOKEN: ${{ secrets.CI_BOT_TOKEN }}
+  VERSION: ${{ github.event.deployment.payload.version }}
+  STAGE: ${{ github.event.deployment.payload.environment }}
+  SLACK_WEBHOOK: ${{ secrets.SLACK_WEBHOOK }}
+  SLACK_USERNAME: Frontend Universe
+  SLACK_CHANNEL: frontend-releases
+  SLACK_ICON: https://avatars.githubusercontent.com/u/7713209?s=200&v=4
+jobs:
+  mark-github-release:
+    runs-on: self-hosted
+    timeout-minutes: 10
+    steps:
+      - name: Mark Release Success on GitHub
+        if: ${{ success() }}
+        run: |
+          curl --location --request POST "https://api.github.com/repos/razorpay/buzz-frontend/deployments/${{ github.event.deployment.id }}/statuses" \
+          --header "Authorization: token ${{ github.token }}" \
+          --header "Accept: application/vnd.github.everest-preview+json" \
+          --header "Content-Type: application/json" \
+          --data-raw '{"environment": "${{ github.event.deployment.environment }}","state": "success"}'
+  create-release-and-log-deployment:
+    name: Create Release & Send Deployment Log
+    runs-on: self-hosted
+    timeout-minutes: 10
+    steps:
+      - name: Checkout Codebase
+        uses: actions/checkout@v3
+        with:
+          token: ${{ secrets.CI_BOT_TOKEN }}
+      - name: Setup Node v18.12.1
+        uses: actions/setup-node@v3
+        with:
+          node-version: 18.12.1
+      - name: Install Yarn
+        run: npm install -g yarn
+      - name: Setup Cache & Install Dependencies
+        uses: bahmutov/npm-install@v1.8.15
+        with:
+          install-command: yarn --frozen-lockfile
+      - name: Run release script
+        run: yarn universe release
+        env:
+          GITHUB_TOKEN: ${{ secrets.CI_BOT_TOKEN }}
+      - name: Run Universe Log Spinnaker Deployment Script
+        run: yarn universe log-spinnaker-deployment

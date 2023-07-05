@@ -1,0 +1,139 @@
+name: Deploy - buzz-frontend
+on: deployment
+env:
+  APP_NAME: buzz-frontend
+  HOME: /actions-runner/_work
+  GITHUB_ACCESS_TOKEN: ${{ secrets.CI_BOT_TOKEN }}
+  VERSION: ${{ github.event.deployment.payload.version }}
+  STAGE: ${{ github.event.deployment.payload.environment }}
+  BUILD_PATH: build/browser
+  AWS_DEFAULT_REGION: ap-south-1
+  AWS_S3_STAGE_CACHE_BUCKET_NAME: rzp-1018-nonprod-actions-cache
+  AWS_S3_STAGE_BUCKET_NAME: rzp-1018-nonprod-buzz-frontend
+  AWS_S3_STAGE_ROLE: arn:aws:iam::101860328116:role/gha-stage-buzz-frontend-action
+  AWS_S3_PROD_CACHE_BUCKET_NAME: ${{ secrets.ACTIONS_CACHE_AWS_S3_BUCKET }}
+  AWS_S3_PROD_BUCKET_NAME: rzp-1415-prod-buzz-frontend
+  AWS_S3_PROD_ROLE: arn:aws:iam::141592612890:role/gha-prod-buzz-frontend-action
+  SLACK_WEBHOOK: ${{ secrets.SLACK_WEBHOOK }}
+  SLACK_USERNAME: Frontend Universe
+  SLACK_CHANNEL: frontend-releases
+  SLACK_ICON: https://avatars.githubusercontent.com/u/7713209?s=200&v=4
+jobs:
+  beta-deploy:
+    runs-on: self-hosted
+    timeout-minutes: 15
+    permissions:
+      id-token: write
+      contents: write
+    concurrency:
+      group: beta-deploy-${{ github.ref }}
+      cancel-in-progress: true
+    if: ${{ github.event.deployment.payload.environment == 'beta'}}
+    steps:
+      - name: Set workflow start time
+        run: echo "WORKFLOW_START_TIME=$(date +'%Y-%m-%dT%H:%M:%S')" >> $GITHUB_ENV
+        working-directory: /
+      - name: Checkout Codebase
+        uses: actions/checkout@v3
+        with:
+          token: ${{ secrets.CI_BOT_TOKEN }}
+      - name: Setup Node v18.12.1
+        uses: actions/setup-node@v3
+        with:
+          node-version: 18.12.1
+      - name: Install Yarn
+        run: npm install -g yarn
+      - name: Setup Cache & Install Dependencies
+        uses: bahmutov/npm-install@v1.8.15
+        with:
+          install-command: yarn --frozen-lockfile
+      - name: Configure Stage AWS Credentials
+        uses: aws-actions/configure-aws-credentials@master
+        with:
+          role-to-assume: ${{ env.AWS_S3_STAGE_ROLE }}
+          aws-region: ${{ env.AWS_DEFAULT_REGION }}
+          role-duration-seconds: 900
+      - name: Download Build from Stage S3 Cache
+        run: aws s3 cp s3://${AWS_S3_STAGE_CACHE_BUCKET_NAME}/${APP_NAME}/${STAGE}/${VERSION} ${BUILD_PATH} --recursive
+      - name: Deploy to Stage
+        run: |-
+          aws s3 cp \
+          --content-type "text/html" \
+          --metadata-directive REPLACE \
+          --cache-control "max-age=0,no-cache,no-store,must-revalidate" \
+          ${BUILD_PATH}/index.html s3://$AWS_S3_STAGE_BUCKET_NAME 
+
+          aws s3 sync \
+          --exclude ${BUILD_PATH}/index.html \
+          ${BUILD_PATH} s3://$AWS_S3_STAGE_BUCKET_NAME/$BUILD_PATH
+      - name: Log Deploy Info to Universe Metrics
+        run: yarn universe log-deploy-workflow
+      - name: Notify Deployment Success on Slack
+        if: ${{ success() }}
+        uses: rtCamp/action-slack-notify@v2
+        env:
+          SLACK_MESSAGE: ${{ env.APP_NAME }}@${{ env.VERSION }} Deployed to the staging environment successfully.
+      - name: Notify Deployment Failure on Slack
+        if: ${{ failure() }}
+        uses: rtCamp/action-slack-notify@v2
+        env:
+          SLACK_MESSAGE: Failed to deploy ${{ env.APP_NAME }}@${{ env.VERSION }} to the staging environment.
+  production-deploy:
+    runs-on: self-hosted
+    timeout-minutes: 15
+    concurrency:
+      group: production-deploy-${{ github.ref }}
+      cancel-in-progress: true
+    permissions:
+      id-token: write
+      contents: write
+    if: ${{ github.event.deployment.payload.environment == 'prod'}}
+    steps:
+      - name: Set workflow start time
+        run: echo "WORKFLOW_START_TIME=$(date +'%Y-%m-%dT%H:%M:%S')" >> $GITHUB_ENV
+        working-directory: /
+      - name: Checkout Codebase
+        uses: actions/checkout@v3
+        with:
+          token: ${{ secrets.CI_BOT_TOKEN }}
+      - name: Setup Node v18.12.1
+        uses: actions/setup-node@v3
+        with:
+          node-version: 18.12.1
+      - name: Install Yarn
+        run: npm install -g yarn
+      - name: Setup Cache & Install Dependencies
+        uses: bahmutov/npm-install@v1.8.15
+        with:
+          install-command: yarn --frozen-lockfile
+      - name: Configure Production AWS Credentials
+        uses: aws-actions/configure-aws-credentials@master
+        with:
+          role-to-assume: ${{ env.AWS_S3_PROD_ROLE }}
+          aws-region: ${{ env.AWS_DEFAULT_REGION }}
+          role-duration-seconds: 900
+      - name: Download Build from Production S3 Cache
+        run: aws s3 cp s3://${AWS_S3_PROD_CACHE_BUCKET_NAME}/${APP_NAME}/${STAGE}/${VERSION} ${BUILD_PATH} --recursive
+      - name: Deploy to Production
+        run: |-
+          aws s3 cp \
+          --content-type "text/html" \
+          --metadata-directive REPLACE \
+          --cache-control "max-age=0,no-cache,no-store,must-revalidate" \
+          ${BUILD_PATH}/index.html s3://$AWS_S3_PROD_BUCKET_NAME 
+
+          aws s3 sync \
+          --exclude ${BUILD_PATH}/index.html \
+          ${BUILD_PATH} s3://$AWS_S3_PROD_BUCKET_NAME/$BUILD_PATH
+      - name: Log Deploy Info to Universe Metrics
+        run: yarn universe log-deploy-workflow
+      - name: Notify Deployment Success on Slack
+        if: ${{ success() }}
+        uses: rtCamp/action-slack-notify@v2
+        env:
+          SLACK_MESSAGE: ${{ env.APP_NAME }}@${{ env.VERSION }} Deployed to the production environment successfully.
+      - name: Notify Deployment Failure on Slack
+        if: ${{ failure() }}
+        uses: rtCamp/action-slack-notify@v2
+        env:
+          SLACK_MESSAGE: Failed to deploy ${{ env.APP_NAME }}@${{ env.VERSION }} to the production environment.

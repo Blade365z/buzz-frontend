@@ -1,0 +1,76 @@
+name: Deploy Preview - buzz-frontend
+on:
+  pull_request:
+    branches:
+      - "**"
+      - "!changeset-release/master"
+env:
+  APP_NAME: buzz-frontend
+  HOME: /actions-runner/_work
+  GITHUB_ACCESS_TOKEN: ${{ secrets.CI_BOT_TOKEN }}
+  SENTRY_AUTH_TOKEN: ${{ secrets.SENTRY_AUTH_TOKEN }}
+  BUILD_PATH: build/browser
+  AWS_DEFAULT_REGION: ap-south-1
+  AWS_S3_STAGE_CACHE_BUCKET_NAME: rzp-1018-nonprod-actions-cache
+  AWS_S3_STAGE_ROLE: arn:aws:iam::101860328116:role/gha-stage-buzz-frontend-action
+jobs:
+  deploy-preview:
+    name: Deploy Preview Build
+    runs-on: self-hosted
+    timeout-minutes: 15
+    concurrency:
+      group: deploy-preview-${{ github.ref }}
+      cancel-in-progress: true
+    env:
+      STAGE: devstack
+    steps:
+      - name: Checkout Codebase
+        uses: actions/checkout@v3
+        with:
+          token: ${{ secrets.CI_BOT_TOKEN }}
+      - name: Setup Node v18.12.1
+        uses: actions/setup-node@v3
+        with:
+          node-version: 18.12.1
+      - name: Install Yarn
+        run: npm install -g yarn
+      - name: Setup Cache & Install Dependencies
+        uses: bahmutov/npm-install@v1.8.15
+        with:
+          install-command: yarn --frozen-lockfile
+      - name: Enable webpack persistent caching
+        uses: actions/cache@v3
+        id: build-webpack-persistent-cache
+        with:
+          path: node_modules/.cache/webpack
+          key: build-${{ hashFiles('**/webpack.*.js') }}-${{ hashFiles('**/yarn.lock') }}
+          restore-keys: |-
+            build-${{ hashFiles('**/webpack.*.js') }}-${{ hashFiles('**/yarn.lock') }}
+            build-${{ hashFiles('**/webpack.*.js') }}-
+      - name: Build
+        run: yarn ${STAGE}:build
+      - name: Configure Stage AWS Credentials
+        uses: aws-actions/configure-aws-credentials@master
+        with:
+          role-to-assume: ${{ env.AWS_S3_STAGE_ROLE }}
+          aws-region: ${{ env.AWS_DEFAULT_REGION }}
+          role-duration-seconds: 900
+      - name: Deploy to Devstack
+        run: >-
+          aws s3 cp ${BUILD_PATH}/index.html s3://${AWS_S3_STAGE_CACHE_BUCKET_NAME}/${APP_NAME}/${STAGE}/${VERSION} --acl public-read --content-type "text/html" --metadata-directive REPLACE
+          --cache-control max-age=0,no-cache,no-store,must-revalidate
+
+          aws s3 cp ${BUILD_PATH} s3://${AWS_S3_STAGE_CACHE_BUCKET_NAME}/${APP_NAME}/${STAGE}/${VERSION}/${BUILD_PATH} --acl public-read --exclude ${BUILD_PATH}/index.html --metadata-directive REPLACE
+          --cache-control max-age=0,no-cache,no-store,must-revalidate --recursive
+
+          aws s3 cp ${BUILD_PATH} s3://${AWS_S3_STAGE_CACHE_BUCKET_NAME}/${APP_NAME}/${STAGE}/${VERSION} --acl public-read --exclude "*" --include "js/*.js" --include "index.html" --include "static/*"
+          --recursive --metadata-directive REPLACE --cache-control max-age=0,no-cache,no-store,must-revalidate
+        env:
+          VERSION: ${{ github.event.pull_request.head.sha }}
+      - name: Trigger PR Deploy Preview via Argo
+        run: yarn devstack:deploy
+        env:
+          COMMIT_ID: ${{ github.event.pull_request.head.sha }}
+          PR_NUMBER: ${{ github.event.number }}
+          REPO_NAME: ${{ github.event.repository.name }}
+          JOB_URL: https://argo.dev.razorpay.in/api/v1/events/argo-workflows/buzz-frontend-devstack-deployment

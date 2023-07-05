@@ -1,0 +1,54 @@
+name: Validate - buzz-frontend
+on:
+  - pull_request
+env:
+  APP_NAME: buzz-frontend
+  HOME: /actions-runner/_work
+  GITHUB_ACCESS_TOKEN: ${{ secrets.CI_BOT_TOKEN }}
+  SENTRY_AUTH_TOKEN: ${{ secrets.SENTRY_AUTH_TOKEN }}
+  AWS_DEFAULT_REGION: ap-south-1
+  AWS_S3_STAGE_CACHE_BUCKET_NAME: rzp-1018-nonprod-actions-cache
+  AWS_S3_STAGE_ROLE: arn:aws:iam::101860328116:role/gha-stage-buzz-frontend-action
+  REPORT_PORTAL_TOKEN: ${{ secrets.REPORT_PORTAL_TOKEN }}
+  REPORT_PORTAL_HOST: ${{ secrets.REPORT_PORTAL_HOST }}
+  REPORT_PORTAL_PROJECT: ${{ secrets.REPORT_PORTAL_PROJECT }}
+  COMMIT_ID: ${{ github.event.pull_request.head.sha }}
+  PULL_REQUEST_NUMBER: ${{ github.event.pull_request.number}}
+jobs:
+  validate:
+    name: Validate
+    runs-on: self-hosted
+    timeout-minutes: 10
+    concurrency:
+      group: validate-${{ github.ref }}
+      cancel-in-progress: true
+    steps:
+      - name: Checkout Codebase
+        uses: actions/checkout@v3
+        with:
+          token: ${{ secrets.CI_BOT_TOKEN }}
+      - name: Setup Node v18.12.1
+        uses: actions/setup-node@v3
+        with:
+          node-version: 18.12.1
+      - name: Install Yarn
+        run: npm install -g yarn
+      - name: Setup Cache & Install Dependencies
+        uses: bahmutov/npm-install@v1.8.15
+        with:
+          install-command: yarn --frozen-lockfile
+      - name: Enable webpack persistent caching
+        uses: actions/cache@v3
+        id: build-webpack-persistent-cache
+        with:
+          path: node_modules/.cache/webpack
+          key: build-${{ hashFiles('**/webpack.*.js') }}-${{ hashFiles('**/yarn.lock') }}
+          restore-keys: |-
+            build-${{ hashFiles('**/webpack.*.js') }}-${{ hashFiles('**/yarn.lock') }}
+            build-${{ hashFiles('**/webpack.*.js') }}-
+      - name: Lint Code
+        run: yarn lint
+      - name: Run Tests
+        run: yarn test
+      - name: Build Application
+        run: yarn production:build
